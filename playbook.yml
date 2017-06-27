@@ -1,0 +1,102 @@
+- hosts: my_hosts
+
+  vars:
+    app_dir: "/mnt/transient_nfs/software"
+    container_base_url: "https://swift.rc.nectar.org.au:8888/v1/AUTH_377/jchung/"
+    software_tar_filename: ifb_workshop_test.tar.gz
+    key_tar_filename: ifb_public_keys.tar
+
+  tasks:
+  - name: Download tarball containing instructor public keys
+    get_url:
+      url: "{{ container_base_url }}{{ key_tar_filename }}"
+      dest: /home/ubuntu/.ssh/{{ key_tar_filename }}
+
+  - name: Extract tarball containing public keys
+    unarchive:
+      src: /home/ubuntu/.ssh/{{ key_tar_filename }}
+      dest: /home/ubuntu/.ssh
+      copy: no
+
+  - name: Add SSH keys to authorised keys
+    shell: "cat /home/ubuntu/.ssh/ifb_public_keys/* >> /home/ubuntu/.ssh/authorized_keys"
+
+  - name: Edit /etc/bashrc so users will have the necessary paths
+    blockinfile:
+      path: /etc/bash.bashrc
+      block: |
+        export PATH={{ app_dir }}/anaconda2/bin:{{ app_dir }}/erds/erds1.1:{{ app_dir }}/annovar/annovar:$PATH
+        export GATK_JAR={{ app_dir }}/gatk/GenomeAnalysisTK.jar
+    become: yes
+
+  - name: Create users
+    shell: cd /opt/gvl/gvl_commandline_utilities/; bash setup_user.sh -s {{ item }}
+    with_items:
+      - user01
+      - user02
+      - user03
+
+  - name: Copy script to launch BrowseVCF to user's desktop
+    copy: src=files/BrowseVCF.sh dest=/home/{{ item }}/Desktop/BrowseVCF.sh owner={{ item }} group={{ item }} mode=755
+    with_items:
+      - researcher
+      - user01
+      - user02
+      - user03
+    become: yes
+
+  - name: Install dependencies for BrowseVCF
+    apt: pkg={{ item }} state=latest
+    with_items:
+      - libdb-dev
+    become: yes
+
+  - name: Install Python dependencies for BrowseVCF
+    pip: name={{ item }} state=latest
+    with_items:
+      - wormtable
+      - psutil
+      - cherrypy
+      - cherrypy-cgiserver
+    become: yes
+
+  - name: Create software directory in /mnt/transient_nfs/
+    file: path="{{ app_dir }}" state=directory mode=0755 owner=ubuntu group=ubuntu
+    become: yes
+
+  - name: Download tarball containing the workshop software
+    get_url:
+      url: "{{ container_base_url }}{{ software_tar_filename }}"
+      dest: "{{ app_dir }}"
+      tmp_dest: "{{ app_dir }}"  # Necessary because /tmp has limited space
+
+  - name: Extract tarball containing workshop software
+    unarchive:
+      src: "{{ app_dir }}/{{ software_tar_filename }}"
+      dest: "{{ app_dir }}"
+      copy: no
+
+  # Adapted from: http://adamj.eu/tech/2014/07/19/installing-and-removing-r-packages-with-ansible/
+  - name: Install R packages from Bioconductor
+    command: >
+      Rscript --slave --no-save --no-restore-history -e "if (! ('{{ item }}' %in% installed.packages()[,'Package'])) { source('https://bioconductor.org/biocLite.R'); biocLite('{{ item }}'); print('Added'); } else { print('Already installed'); }"
+    register: r_result
+    failed_when: "r_result.rc != 0 or 'had non-zero exit status' in r_result.stderr"
+    changed_when: "'Added' in r_result.stdout"
+    with_items:
+      - edgeR
+      - DESeq2
+    become: yes
+
+  # Alter the VNC geometry to suit higher res apps (copied from Simon's gvlworkshop ansible playbook)
+  - name: Change the vnc resolution.
+    shell: sed "s/-geometry 1024x768/-geometry 1440x900/" /etc/xinetd.d/vnc > /etc/xinetd.d/1.txt
+    become: yes
+
+  - name: Overwrite old vnc setup
+    command: mv /etc/xinetd.d/1.txt /etc/xinetd.d/vnc
+    become: yes
+
+  - name: restart xinetd
+    command: service xinetd restart
+    become: yes
