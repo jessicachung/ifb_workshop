@@ -100,3 +100,12 @@
   - name: restart xinetd
     command: service xinetd restart
     become: yes
+
+  # Alter the dashboard to show researcher user instead of ubuntu to minimise confusion
+  - name: Replace service_registry.yml
+    copy: src=files/service_registry.yml dest=/opt/gvl/gvldash/gvldash/service_registry.yml owner=gvlwebuser group=webapps mode=644
+    become: yes
+
+  - name: Change user in SSH field to researcher in the dashboard
+    shell: sed --in-place=.bak 's/ubuntu/researcher/' /opt/gvl/gvldash/gvldash/templates/pages/home.html
+    become: yes
