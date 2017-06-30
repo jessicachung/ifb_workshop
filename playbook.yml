@@ -109,3 +109,30 @@
   - name: Change user in SSH field to researcher in the dashboard
     shell: sed --in-place=.bak 's/ubuntu/researcher/' /opt/gvl/gvldash/gvldash/templates/pages/home.html
     become: yes
+
+  # Change slurm configuration and slurm template in cloudman (so that it doesn't change back if the server restarts)
+  - name: Add slurm config
+    blockinfile:
+      path: "{{ item }}"
+      insertafter: "JobCompType=jobcomp/filetxt"
+      block: |
+        TaskPlugin=task/affinity
+        TaskPluginParam=Sched
+        AccountingStorageType=accounting_storage/filetxt
+        AccountingStorageLoc=/var/log/slurm-llnl/acct
+    with_items:
+      - /mnt/cm/cm/conftemplates/slurm.conf.default
+      - /mnt/transient_nfs/slurm/slurm.conf
+    become: yes
+
+  - name: Restart slurmd
+    shell: /usr/sbin/slurmd -c -N master -L /var/log/slurm-llnl/slurmd.log
+    become: yes
+
+  - name: Restart slurmctld
+    shell: /usr/sbin/slurmctld -L /var/log/slurm-llnl/slurmctld.log
+    become: yes
+
+  - name: Make sure slurm account log is readable for everyone
+    file: path=/var/log/slurm-llnl/acct mode=644
+    become: yes
