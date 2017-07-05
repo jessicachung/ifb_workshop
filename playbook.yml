@@ -21,13 +21,13 @@
   - name: Add SSH keys to authorised keys
     shell: "cat /home/ubuntu/.ssh/ifb_public_keys/* >> /home/ubuntu/.ssh/authorized_keys"
 
-  - name: Edit /etc/bashrc so users will have the necessary paths
-    blockinfile:
-      path: /etc/bash.bashrc
-      block: |
-        export PATH={{ app_dir }}/anaconda2/bin:{{ app_dir }}/erds/erds1.1:{{ app_dir }}/annovar/annovar:$PATH
-        export GATK_JAR={{ app_dir }}/gatk/GenomeAnalysisTK.jar
-    become: yes
+  # - name: Edit /etc/bashrc so users will have the necessary paths
+  #   blockinfile:
+  #     path: /etc/bash.bashrc
+  #     block: |
+  #       export PATH={{ app_dir }}/anaconda2/bin:{{ app_dir }}/erds/erds1.1:{{ app_dir }}/annovar/annovar:$PATH
+  #       export GATK_JAR={{ app_dir }}/gatk/GenomeAnalysisTK.jar
+  #   become: yes
 
   - name: Create users
     shell: cd /opt/gvl/gvl_commandline_utilities/; bash setup_user.sh -s {{ item }}
@@ -36,45 +36,46 @@
       - user02
       - user03
 
-  - name: Copy script to launch BrowseVCF to user's desktop
-    copy: src=files/BrowseVCF.sh dest=/home/{{ item }}/Desktop/BrowseVCF.sh owner={{ item }} group={{ item }} mode=755
-    with_items:
-      - researcher
-      - user01
-      - user02
-      - user03
-    become: yes
-
-  - name: Install dependencies for BrowseVCF
-    apt: pkg={{ item }} state=latest
-    with_items:
-      - libdb-dev
-    become: yes
-
-  - name: Install Python dependencies for BrowseVCF
-    pip: name={{ item }} state=latest
-    with_items:
-      - wormtable
-      - psutil
-      - cherrypy
-      - cherrypy-cgiserver
-    become: yes
-
-  - name: Create software directory in /mnt/transient_nfs/
-    file: path="{{ app_dir }}" state=directory mode=0755 owner=ubuntu group=ubuntu
-    become: yes
-
-  - name: Download tarball containing the workshop software
-    get_url:
-      url: "{{ container_base_url }}{{ software_tar_filename }}"
-      dest: "{{ app_dir }}"
-      tmp_dest: "{{ app_dir }}"  # Necessary because /tmp has limited space
-
-  - name: Extract tarball containing workshop software
-    unarchive:
-      src: "{{ app_dir }}/{{ software_tar_filename }}"
-      dest: "{{ app_dir }}"
-      copy: no
+  # - name: Copy script to launch BrowseVCF to user's desktop
+  #   copy: src=files/BrowseVCF.sh dest=/home/{{ item }}/Desktop/BrowseVCF.sh owner={{ item }} group={{ item }} mode=755
+  #   with_items:
+  #     - researcher
+  #     - user01
+  #     - user02
+  #     - user03
+  #   become: yes
+  #
+  # - name: Install dependencies for BrowseVCF and also pigz
+  #   apt: pkg={{ item }} state=latest
+  #   with_items:
+  #     - libdb-dev
+  #     - pigz
+  #   become: yes
+  #
+  # - name: Install Python dependencies for BrowseVCF
+  #   pip: name={{ item }} state=latest
+  #   with_items:
+  #     - wormtable
+  #     - psutil
+  #     - cherrypy
+  #     - cherrypy-cgiserver
+  #   become: yes
+  #
+  # - name: Create software directory in /mnt/transient_nfs/
+  #   file: path="{{ app_dir }}" state=directory mode=0755 owner=ubuntu group=ubuntu
+  #   become: yes
+  #
+  # - name: Download tarball containing the workshop software
+  #   get_url:
+  #     url: "{{ container_base_url }}{{ software_tar_filename }}"
+  #     dest: "{{ app_dir }}"
+  #     tmp_dest: "{{ app_dir }}"  # Necessary because /tmp has limited space
+  #
+  # - name: Extract tarball containing workshop software
+  #   unarchive:
+  #     src: "{{ app_dir }}/{{ software_tar_filename }}"
+  #     dest: "{{ app_dir }}"
+  #     copy: no
 
   # Adapted from: http://adamj.eu/tech/2014/07/19/installing-and-removing-r-packages-with-ansible/
   - name: Install R packages from Bioconductor
@@ -102,42 +103,41 @@
     become: yes
 
   # Alter the dashboard to show researcher user instead of ubuntu to minimise confusion
-  # Don't need this any more if we're not using individual VMs for each person
-  # - name: Replace service_registry.yml
-  #   copy: src=files/service_registry.yml dest=/opt/gvl/gvldash/gvldash/service_registry.yml owner=gvlwebuser group=webapps mode=644
-  #   become: yes
-  #
-  # - name: Change user in SSH field to researcher in the dashboard
-  #   shell: sed --in-place=.bak 's/ubuntu/researcher/' /opt/gvl/gvldash/gvldash/templates/pages/home.html
-  #   become: yes
+  - name: Replace service_registry.yml
+    copy: src=files/service_registry.yml dest=/opt/gvl/gvldash/gvldash/service_registry.yml owner=gvlwebuser group=webapps mode=644
+    become: yes
+
+  - name: Change user in SSH field to researcher in the dashboard
+    shell: sed --in-place=.bak 's/ubuntu/researcher/' /opt/gvl/gvldash/gvldash/templates/pages/home.html
+    become: yes
 
   # Change slurm configuration and slurm template in cloudman (so that it doesn't change back if the server restarts)
-  # - name: Add slurm config
-  #   blockinfile:
-  #     path: "{{ item }}"
-  #     insertafter: "JobCompType=jobcomp/filetxt"
-  #     block: |
-  #       TaskPlugin=task/affinity
-  #       TaskPluginParam=Sched
-  #       AccountingStorageType=accounting_storage/filetxt
-  #       AccountingStorageLoc=/var/log/slurm-llnl/acct
-  #   with_items:
-  #     - /mnt/cm/cm/conftemplates/slurm.conf.default
-  #     - /mnt/transient_nfs/slurm/slurm.conf
-  #   become: yes
-  #
-  # - name: Restart slurmd
-  #   shell: /usr/sbin/slurmd -c -N master -L /var/log/slurm-llnl/slurmd.log
-  #   become: yes
-  #
-  # - name: Restart slurmctld
-  #   shell: /usr/sbin/slurmctld -L /var/log/slurm-llnl/slurmctld.log
-  #   become: yes
+  - name: Add slurm config
+    blockinfile:
+      path: "{{ item }}"
+      insertafter: "JobCompType=jobcomp/filetxt"
+      block: |
+        TaskPlugin=task/affinity
+        TaskPluginParam=Sched
+        AccountingStorageType=accounting_storage/filetxt
+        AccountingStorageLoc=/var/log/slurm-llnl/acct
+    with_items:
+      - /mnt/cm/cm/conftemplates/slurm.conf.default
+      - /mnt/transient_nfs/slurm/slurm.conf
+    become: yes
+
+  - name: Restart slurmd
+    shell: /usr/sbin/slurmd -c -N master -L /var/log/slurm-llnl/slurmd.log
+    become: yes
+
+  - name: Restart slurmctld
+    shell: /usr/sbin/slurmctld -L /var/log/slurm-llnl/slurmctld.log
+    become: yes
 
   # Instead of adding lines to the existing file, replace the default slurm config by cloudman. A worker node then needs to be added via CloudMan to recreate the slurm config used based on the new template.
-  - name: Replace slurm.conf.default that CloudMan uses
-    copy: src=files/slurm.conf.default dest=/mnt/cm/cm/conftemplates/slurm.conf.default owner=501 group=staff mode=644
-    become: yes
+  # - name: Replace slurm.conf.default that CloudMan uses
+  #   copy: src=files/slurm.conf.default dest=/mnt/cm/cm/conftemplates/slurm.conf.default owner=501 group=staff mode=644
+  #   become: yes
 
   - name: Make sure slurm account log is readable for everyone
     file: path=/var/log/slurm-llnl/acct mode=644
